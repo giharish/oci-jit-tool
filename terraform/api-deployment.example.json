@@ -1,0 +1,84 @@
+{
+  "routes": [
+    {
+      "path": "/auth",
+      "methods": ["GET", "POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..auth"
+      }
+    },
+    {
+      "path": "/catalog",
+      "methods": ["GET", "POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..catalog"
+      }
+    },
+    {
+      "path": "/requests",
+      "methods": ["GET", "POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..request"
+      }
+    },
+    {
+      "path": "/approval",
+      "methods": ["POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..approval"
+      }
+    },
+    {
+      "path": "/policy/preview",
+      "methods": ["POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..policy"
+      }
+    },
+    {
+      "path": "/revoke",
+      "methods": ["POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..revoke"
+      }
+    },
+    {
+      "path": "/extension/request",
+      "methods": ["POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..extensionrequest"
+      }
+    },
+    {
+      "path": "/extension/approve",
+      "methods": ["POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..extensionapproval"
+      }
+    },
+    {
+      "path": "/notifications/warnings",
+      "methods": ["POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..notification"
+      }
+    },
+    {
+      "path": "/expiry/run",
+      "methods": ["POST"],
+      "backend": {
+        "type": "ORACLE_FUNCTIONS_BACKEND",
+        "functionId": "ocid1.fnfunc.oc1..expiry"
+      }
+    }
+  ]
+}

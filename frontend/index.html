@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OCI IAM JIT Access</title>
+    <link rel="stylesheet" href="./styles.css?v=20261003-1" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Production Function Architecture</p>
+          <h1>OCI IAM Just-in-Time Access</h1>
+        </div>
+        <div class="identity">
+          <span class="metric-label">Signed-in identity</span>
+          <strong id="sessionIdentity">Anonymous requester</strong>
+          <small id="sessionRole">requester</small>
+          <form id="loginForm" class="login-form">
+            <input id="loginEmail" type="email" autocomplete="username" placeholder="Email" />
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" />
+            <button class="primary" id="loginButton" type="submit">Sign in</button>
+          </form>
+          <form id="registerForm" class="login-form hidden">
+            <input id="registerName" autocomplete="name" placeholder="Full name" />
+            <input id="registerEmail" type="email" autocomplete="username" placeholder="Email" />
+            <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Password" />
+            <button class="primary" id="registerButton" type="submit">Create</button>
+          </form>
+          <form id="verifyForm" class="login-form hidden">
+            <input id="verifyEmail" type="email" autocomplete="username" placeholder="Email" />
+            <input id="verifyToken" autocomplete="one-time-code" placeholder="Verification token" />
+            <button class="primary" id="verifyButton" type="submit">Verify</button>
+          </form>
+          <button class="ghost" id="toggleRegisterButton" type="button">Create account</button>
+          <button class="ghost hidden" id="toggleVerifyButton" type="button">Verify account</button>
+          <button class="ghost hidden" id="logoutButton" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <div class="status" id="status">Ready.</div>
+
+      <nav class="tabs" aria-label="Application modules">
+        <button class="tab active" data-tab="requestPage">Request</button>
+        <button class="tab" id="approvalTab" data-tab="approvalPage">My Access</button>
+        <button class="tab admin-only" data-tab="catalogPage">Catalog</button>
+        <button class="tab admin-only" data-tab="auditPage">Audit</button>
+      </nav>
+
+      <section class="page active" id="requestPage">
+        <section class="grid two">
+          <article class="panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Access Request</p>
+                <h2>Target Tenancy Access</h2>
+              </div>
+              <span class="badge" id="requesterRole">requester</span>
+            </div>
+            <form id="requestForm" class="form">
+              <label>Requester name<input id="requesterName" value="Anika Singh" /></label>
+              <label>Requester email<input id="requesterEmail" type="email" value="anika.singh@customer.example" /></label>
+              <div class="field wide"><span class="field-label">Target tenancies</span><div id="targetTenancy" class="checkbox-list"></div></div>
+              <label>Access type<select id="accessType"><option value="standard_group">Predefined JIT group</option></select></label>
+              <label class="standard-only">Available group<select id="groupSelect"></select></label>
+              <label>Requested start time<input id="requestedStartAt" type="datetime-local" /></label>
+              <label>Duration<select id="duration"><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option></select></label>
+              <div class="custom-fields hidden" id="customFields">
+                <label>Custom group name<input id="customGroupName" placeholder="JIT-PRD-REQ-COMPUTE-READ" /></label>
+                <label>Compartment OCID<input id="compartmentOcid" placeholder="ocid1.compartment.oc1.." /></label>
+                <label>Service family<select id="serviceFamily"></select></label>
+                <label>Verb<select id="verb"><option>inspect</option><option>read</option><option>use</option><option>manage</option></select></label>
+                <label>Scope<select id="scopeType"><option value="compartment">Compartment</option><option value="tenancy">Tenancy</option></select></label>
+                <button class="ghost" id="previewPolicyButton" type="button">Preview Policy</button>
+              </div>
+              <label class="wide">Business justification<textarea id="justification">Incident response requires temporary access to validate service health.</textarea></label>
+              <pre class="policy-preview wide" id="policyPreview">Policy preview appears here for custom access.</pre>
+              <div class="list-context wide" id="requestAuthNotice">Sign in or create an account before submitting an access request.</div>
+              <button class="primary wide" id="submitRequestButton" type="submit">Submit Access Request</button>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Function Flow</p>
+                <h2>What This Portal Calls</h2>
+              </div>
+            </div>
+            <ol class="flow-list">
+              <li><strong>Catalog sync</strong><span>Discovers parent and child tenancies plus JIT groups.</span></li>
+              <li><strong>Request function</strong><span>Creates state and Jira approval ticket.</span></li>
+              <li><strong>Approval callback</strong><span>Validates configured admin, then provisions only in target tenancy.</span></li>
+              <li><strong>Policy builder</strong><span>Creates allowed policy statements for custom access.</span></li>
+              <li><strong>Revoke function</strong><span>Removes group membership on expiry or manual revoke.</span></li>
+            </ol>
+          </article>
+        </section>
+      </section>
+
+      <section class="page" id="approvalPage">
+        <section class="grid two">
+          <article class="panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow" id="approvalPageEyebrow">Access Status</p>
+                <h2 id="approvalPageTitle">My Access</h2>
+              </div>
+              <button class="ghost" id="refreshRequestsButton">Refresh</button>
+            </div>
+            <div class="list-context" id="requestListContext">Showing visible requests.</div>
+            <div id="requestList" class="list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Selected Request</p>
+                <h2 id="selectedTitle">No request selected</h2>
+              </div>
+              <span class="badge" id="selectedStatus">none</span>
+            </div>
+            <div id="selectedDetails" class="details muted">Select a request to review its status.</div>
+            <div class="timer-card hidden" id="timerCard">
+              <span class="metric-label">Time left</span>
+              <strong id="timeLeft">-</strong>
+              <small id="extensionInfo">-</small>
+            </div>
+            <div class="extension-box hidden" id="extensionBox">
+              <label>Extension minutes<input id="extensionMinutes" type="number" min="1" value="15" /></label>
+              <label class="anonymous-extension">Secure email token<input id="extensionToken" placeholder="Token from warning email" /></label>
+              <button class="ghost" id="requestExtensionButton">Request Extension</button>
+              <button class="success admin-only" id="approveExtensionButton">Approve Extension</button>
+              <button class="danger admin-only" id="rejectExtensionButton">Reject Extension</button>
+            </div>
+            <div class="actions">
+              <button class="success admin-only" id="approveButton">Approve / Schedule</button>
+              <button class="danger admin-only" id="rejectButton">Reject</button>
+              <button class="ghost admin-only" id="revokeButton">Revoke</button>
+              <button class="ghost admin-only" id="warningButton">Run Warning Worker</button>
+              <button class="ghost admin-only" id="expiryButton">Run Expiry Worker</button>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section class="page" id="catalogPage">
+        <article class="panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Organization Catalog</p>
+              <h2>Tenancies And Default Groups</h2>
+            </div>
+            <button class="primary" id="syncCatalogButton">Sync Catalog</button>
+          </div>
+          <div class="metrics">
+            <span><strong id="tenancyMetric">0</strong> tenancies</span>
+            <span><strong id="groupMetric">0</strong> JIT groups</span>
+          </div>
+          <div id="catalogList" class="catalog-list"></div>
+        </article>
+      </section>
+
+      <section class="page" id="auditPage">
+        <article class="panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Evidence</p>
+              <h2>Audit Events</h2>
+            </div>
+          </div>
+          <ol id="auditLog" class="audit-log"></ol>
+        </article>
+      </section>
+    </main>
+
+    <script src="./config.js?v=20260930-1"></script>
+    <script src="./app.js?v=20261003-1"></script>
+  </body>
+</html>

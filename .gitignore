@@ -1,0 +1,9 @@
+data/
+__pycache__/
+*.pyc
+.env
+functions/*/app/
+functions/*/requirements.txt
+functions/*/certs/
+functions/*/.oci/
+deployment/subnet-ids.json
