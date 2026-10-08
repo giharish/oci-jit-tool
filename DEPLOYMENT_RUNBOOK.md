@@ -402,17 +402,37 @@ Before deploying the Functions, confirm:
 
 ## 4. Configure Notification Delivery
 
-The application sends an expiry warning when an active grant has less than 15 minutes remaining.
+The application sends account verification emails, expiry warnings when an active grant has less than 15 minutes remaining, and admin notifications when revocation fails.
 
 Recommended options:
 
 - OCI Email Delivery for direct application-generated email.
-- OCI Notifications if customer wants topic/subscription management.
+- Customer SMTP relay if notification delivery is already centralized.
+- OCI Notifications if customer wants topic/subscription management. This requires adding a publisher adapter with the same function contract.
 
-Production implementation point:
+For local demos, keep:
 
-- Replace `MockNotificationGateway` in `app/integrations.py`.
-- Keep the function contract: `send_access_expiry_warning(request, minutes_left)`.
+```bash
+JIT_NOTIFICATION_MODE=mock
+```
+
+Mock mode returns notification metadata but does not send email.
+
+For real email through OCI Email Delivery or a customer SMTP relay:
+
+```bash
+JIT_NOTIFICATION_MODE=smtp
+JIT_SMTP_HOST=smtp.email.<region>.oci.oraclecloud.com
+JIT_SMTP_PORT=587
+JIT_SMTP_USERNAME=<smtp-user>
+JIT_SMTP_PASSWORD=<smtp-password>
+JIT_SMTP_SENDER=jit-access@customer.com
+JIT_SMTP_STARTTLS=true
+```
+
+For OCI Email Delivery, create an approved sender, generate SMTP credentials, and ensure the Function subnet can reach the regional SMTP endpoint on port `587`. For customer notification infrastructure, use their SMTP host, port, credentials, and approved sender address.
+
+Store SMTP username/password in OCI Vault or the customer's secret platform and inject them into the Functions app configuration during deployment.
 
 The warning worker is idempotent per active timer window. After an approved extension, `warning_sent_at` is reset so a new warning can be sent for the new expiry.
 

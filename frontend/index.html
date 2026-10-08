@@ -4,19 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OCI IAM JIT Access</title>
-    <link rel="stylesheet" href="./styles.css?v=20261003-1" />
+    <link rel="stylesheet" href="./styles.css?v=20261008-1" />
   </head>
   <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Production Function Architecture</p>
-          <h1>OCI IAM Just-in-Time Access</h1>
+    <main class="auth-shell" id="authGate">
+      <section class="auth-hero">
+        <div class="auth-copy">
+          <p class="eyebrow">Identity Guardrail</p>
+          <h1>Just-in-time access, only when it is approved.</h1>
+          <p class="lead">A controlled OCI IAM access portal for temporary tenancy access, approval tracking, scheduled activation, and audit visibility.</p>
+          <div class="auth-highlights" aria-label="Portal highlights">
+            <span>Timed grants</span>
+            <span>Tenancy scoped</span>
+            <span>Approval first</span>
+          </div>
         </div>
-        <div class="identity">
-          <span class="metric-label">Signed-in identity</span>
-          <strong id="sessionIdentity">Anonymous requester</strong>
-          <small id="sessionRole">requester</small>
+        <article class="auth-card">
+          <div class="auth-card-title">
+            <p class="eyebrow">Secure Portal</p>
+            <h2 id="authTitle">Sign in</h2>
+          </div>
           <form id="loginForm" class="login-form">
             <input id="loginEmail" type="email" autocomplete="username" placeholder="Email" />
             <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" />
@@ -26,29 +33,82 @@
             <input id="registerName" autocomplete="name" placeholder="Full name" />
             <input id="registerEmail" type="email" autocomplete="username" placeholder="Email" />
             <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Password" />
-            <button class="primary" id="registerButton" type="submit">Create</button>
+            <button class="primary" id="registerButton" type="submit">Create account</button>
           </form>
           <form id="verifyForm" class="login-form hidden">
             <input id="verifyEmail" type="email" autocomplete="username" placeholder="Email" />
             <input id="verifyToken" autocomplete="one-time-code" placeholder="Verification token" />
-            <button class="primary" id="verifyButton" type="submit">Verify</button>
+            <button class="primary" id="verifyButton" type="submit">Verify account</button>
           </form>
-          <button class="ghost" id="toggleRegisterButton" type="button">Create account</button>
-          <button class="ghost hidden" id="toggleVerifyButton" type="button">Verify account</button>
-          <button class="ghost hidden" id="logoutButton" type="button">Sign out</button>
+          <div class="auth-actions">
+            <button class="ghost" id="toggleRegisterButton" type="button">Create account</button>
+            <button class="ghost" id="toggleVerifyButton" type="button">Verify account</button>
+          </div>
+          <div class="auth-note" id="authStatus">Sign in to open the JIT access portal.</div>
+        </article>
+      </section>
+    </main>
+
+    <main class="shell hidden" id="appShell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">OCI Access Control</p>
+          <h1>OCI IAM Just-in-Time Access</h1>
+        </div>
+        <div class="identity">
+          <span class="metric-label">Signed-in identity</span>
+          <strong id="sessionIdentity">Anonymous requester</strong>
+          <small id="sessionRole">requester</small>
+          <button class="ghost" id="logoutButton" type="button">Sign out</button>
         </div>
       </header>
 
       <div class="status" id="status">Ready.</div>
 
       <nav class="tabs" aria-label="Application modules">
-        <button class="tab active" data-tab="requestPage">Request</button>
+        <button class="tab active" data-tab="dashboardPage">Dashboard</button>
+        <button class="tab" data-tab="requestPage">Request</button>
         <button class="tab" id="approvalTab" data-tab="approvalPage">My Access</button>
         <button class="tab admin-only" data-tab="catalogPage">Catalog</button>
         <button class="tab admin-only" data-tab="auditPage">Audit</button>
       </nav>
 
-      <section class="page active" id="requestPage">
+      <section class="page active" id="dashboardPage">
+        <section class="dashboard-hero">
+          <div>
+            <p class="eyebrow" id="dashboardEyebrow">Access Overview</p>
+            <h2 id="dashboardTitle">My access dashboard</h2>
+            <p id="dashboardSummary">Review current request health and temporary access status.</p>
+          </div>
+          <div class="hero-signal">
+            <span id="heroSignalValue">0</span>
+            <small id="heroSignalLabel">active grants</small>
+          </div>
+        </section>
+        <section class="stat-grid" id="statGrid"></section>
+        <section class="grid two dashboard-grid">
+          <article class="panel accent-panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Request Mix</p>
+                <h2>Status Distribution</h2>
+              </div>
+            </div>
+            <div id="statusChart" class="bar-chart"></div>
+          </article>
+          <article class="panel accent-panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow" id="focusChartEyebrow">Tenancy Spread</p>
+                <h2 id="focusChartTitle">Top Tenancies</h2>
+              </div>
+            </div>
+            <div id="focusChart" class="rank-chart"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="page" id="requestPage">
         <section class="grid two">
           <article class="panel">
             <div class="panel-title">
@@ -175,7 +235,7 @@
       </section>
     </main>
 
-    <script src="./config.js?v=20260930-1"></script>
-    <script src="./app.js?v=20261003-1"></script>
+    <script src="./config.js?v=20261008-1"></script>
+    <script src="./app.js?v=20261008-1"></script>
   </body>
 </html>

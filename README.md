@@ -129,6 +129,7 @@ Local runs use SQLite by default. Production is configured for OCI PostgreSQL wi
 - Set `JIT_POSTGRES_SCHEMA=customer_jit_access` or the customer-approved schema name.
 - Provide the OCI PostgreSQL CA certificate through either `JIT_POSTGRES_SSLROOTCERT_PATH` or `JIT_POSTGRES_SSLROOTCERT_PEM`.
 - Keep `JIT_AUTO_INIT_DB=false` in production so Functions do not need DDL privileges.
+- Set `JIT_NOTIFICATION_MODE=smtp` to send verification, expiry warning, and revocation-failure emails through OCI Email Delivery or the customer's SMTP relay.
 
 ## Security Guardrails Implemented
 

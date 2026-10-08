@@ -6,6 +6,7 @@ import unittest
 import importlib.util
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from app.auth import authenticated_actor, hash_password, login_builtin_user, register_builtin_user, verify_builtin_user_email, verify_session_token
 from app.handlers import (
@@ -22,6 +23,7 @@ from app.handlers import (
     sync_catalog,
 )
 from app.integrations import OciSdkGateway
+from app.integrations import SmtpNotificationGateway
 from app.store import connect, parse_iso
 from app.store import postgres_dsn
 
@@ -407,6 +409,55 @@ class JitLifecycleTest(unittest.TestCase):
         self.assertEqual(verified["session"]["email"], "new.user@example.com")
         self.assertEqual(verified["session"]["role"], "requester")
         self.assertEqual(verify_session_token(verified["token"]), "new.user@example.com")
+
+    def test_smtp_notification_gateway_sends_verification_email(self):
+        sent_messages = []
+
+        class FakeSmtp:
+            def __init__(self, host, port, timeout):
+                self.host = host
+                self.port = port
+                self.timeout = timeout
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def starttls(self):
+                self.started_tls = True
+
+            def login(self, username, password):
+                self.username = username
+                self.password = password
+
+            def send_message(self, message):
+                sent_messages.append(message)
+
+        os.environ["JIT_NOTIFICATION_MODE"] = "smtp"
+        os.environ["JIT_SMTP_HOST"] = "smtp.example.com"
+        os.environ["JIT_SMTP_USERNAME"] = "smtp-user"
+        os.environ["JIT_SMTP_PASSWORD"] = "smtp-password"
+        os.environ["JIT_SMTP_SENDER"] = "jit-access@example.com"
+        self.addCleanup(os.environ.pop, "JIT_NOTIFICATION_MODE", None)
+        self.addCleanup(os.environ.pop, "JIT_SMTP_HOST", None)
+        self.addCleanup(os.environ.pop, "JIT_SMTP_USERNAME", None)
+        self.addCleanup(os.environ.pop, "JIT_SMTP_PASSWORD", None)
+        self.addCleanup(os.environ.pop, "JIT_SMTP_SENDER", None)
+
+        with patch("app.integrations.smtplib.SMTP", FakeSmtp):
+            result = SmtpNotificationGateway().send_account_verification(
+                "new.user@example.com",
+                "New User",
+                "verify-token",
+                "https://portal.example.com/jit/?verify_email=new.user@example.com&verification_token=verify-token",
+            )
+
+        self.assertEqual(result["channel"], "smtp")
+        self.assertEqual(result["recipient"], "new.user@example.com")
+        self.assertEqual(len(sent_messages), 1)
+        self.assertIn("Verification token: verify-token", sent_messages[0].get_content())
 
     def test_function_entrypoint_imports_in_packaged_layout(self):
         root = Path(__file__).resolve().parents[1]

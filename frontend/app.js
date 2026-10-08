@@ -32,7 +32,8 @@ async function api(path, options = {}) {
 }
 
 function setStatus(message) {
-  $("status").textContent = message;
+  if ($("status")) $("status").textContent = message;
+  if ($("authStatus")) $("authStatus").textContent = message;
 }
 
 async function runAction(buttonId, workingMessage, action) {
@@ -93,16 +94,23 @@ function setDefaultStartTime() {
 }
 
 function renderSession() {
-  $("sessionIdentity").textContent = session.is_authenticated ? session.email : "Anonymous requester";
-  $("sessionRole").textContent = session.role;
-  $("loginForm").classList.toggle("hidden", session.is_authenticated || authPanel !== "login");
-  $("registerForm").classList.toggle("hidden", session.is_authenticated || authPanel !== "register");
-  $("verifyForm").classList.toggle("hidden", session.is_authenticated || authPanel !== "verify");
-  $("toggleRegisterButton").classList.toggle("hidden", session.is_authenticated);
+  const signedIn = Boolean(session.is_authenticated);
+  $("authGate").classList.toggle("hidden", signedIn);
+  $("appShell").classList.toggle("hidden", !signedIn);
+  $("loginForm").classList.toggle("hidden", signedIn || authPanel !== "login");
+  $("registerForm").classList.toggle("hidden", signedIn || authPanel !== "register");
+  $("verifyForm").classList.toggle("hidden", signedIn || authPanel !== "verify");
+  $("authTitle").textContent = authPanel === "register" ? "Create account" : authPanel === "verify" ? "Verify account" : "Sign in";
+  $("toggleRegisterButton").classList.toggle("hidden", signedIn);
   $("toggleRegisterButton").textContent = authPanel === "register" ? "Use existing account" : "Create account";
-  $("toggleVerifyButton").classList.toggle("hidden", session.is_authenticated);
+  $("toggleVerifyButton").classList.toggle("hidden", signedIn);
   $("toggleVerifyButton").textContent = authPanel === "verify" ? "Use existing account" : "Verify account";
-  $("logoutButton").classList.toggle("hidden", !session.is_authenticated);
+  $("logoutButton").classList.toggle("hidden", !signedIn);
+  if (!signedIn) {
+    return;
+  }
+  $("sessionIdentity").textContent = session.email;
+  $("sessionRole").textContent = session.role;
   $("requesterRole").textContent = session.role;
   $("approvalTab").textContent = session.is_admin ? "Approval" : "My Access";
   $("approvalPageEyebrow").textContent = session.is_admin ? "Approval Queue" : "Access Status";
@@ -155,6 +163,7 @@ function renderCatalog() {
     .join("");
   renderGroups();
   setDefaultStartTime();
+  renderDashboard();
 }
 
 function renderGroups() {
@@ -183,6 +192,116 @@ function renderRequests() {
     </button>`)
     .join("") || `<div class="details muted">No requests yet.</div>`;
   renderSelectedRequest();
+  renderDashboard();
+}
+
+function requestStatusCounts() {
+  return state.requests.reduce((counts, request) => {
+    counts[request.status] = (counts[request.status] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function expiringSoonCount() {
+  return state.requests.filter((request) => request.status === "active" && minutesLeft(request.expires_at) !== null && minutesLeft(request.expires_at) < 15).length;
+}
+
+function renderStat(label, value, tone, detail = "") {
+  return `<article class="stat-widget ${tone}">
+    <span>${label}</span>
+    <strong>${value}</strong>
+    <small>${detail}</small>
+  </article>`;
+}
+
+function renderDashboard() {
+  if (!$("statGrid") || !session.is_authenticated) return;
+  const counts = requestStatusCounts();
+  const total = state.requests.length;
+  const active = counts.active || 0;
+  const scheduled = counts.scheduled || 0;
+  const pending = counts.requested || 0;
+  const failed = (counts.failed || 0) + (counts.revoke_failed || 0);
+  $("dashboardEyebrow").textContent = session.is_admin ? "Command Center" : "Access Overview";
+  $("dashboardTitle").textContent = session.is_admin ? "JIT operations dashboard" : "My access dashboard";
+  $("dashboardSummary").textContent = session.is_admin
+    ? "Track approval load, active access, scheduled grants, revocation health, and catalog coverage."
+    : "Track your requests, current access, scheduled approvals, and time-sensitive actions.";
+  $("heroSignalValue").textContent = active;
+  $("heroSignalLabel").textContent = active === 1 ? "active grant" : "active grants";
+  $("statGrid").innerHTML = session.is_admin
+    ? [
+        renderStat("Total requests", total, "coral", "all visible request history"),
+        renderStat("Pending approval", pending, "amber", "waiting for administrator action"),
+        renderStat("Active grants", active, "green", `${expiringSoonCount()} expiring in under 15 minutes`),
+        renderStat("Scheduled", scheduled, "violet", "approved for future start"),
+        renderStat("Revocation issues", failed, "red", "needs follow-up if non-zero"),
+        renderStat("Catalog coverage", catalog.tenancies.length, "teal", `${catalog.groups.length} JIT groups discovered`),
+      ].join("")
+    : [
+        renderStat("My requests", total, "coral", "submitted by this identity"),
+        renderStat("Active access", active, "green", "currently provisioned"),
+        renderStat("Scheduled", scheduled, "violet", "approved for future start"),
+        renderStat("Pending", pending, "amber", "awaiting approval"),
+      ].join("");
+  renderStatusChart(counts, total);
+  renderFocusChart();
+}
+
+function renderStatusChart(counts, total) {
+  const items = [
+    ["requested", "Requested", "amber"],
+    ["scheduled", "Scheduled", "violet"],
+    ["active", "Active", "green"],
+    ["rejected", "Rejected", "red"],
+    ["revoked", "Revoked", "teal"],
+    ["revoke_failed", "Revoke failed", "red"],
+  ];
+  $("statusChart").innerHTML =
+    items
+      .map(([key, label, tone]) => {
+        const value = counts[key] || 0;
+        const width = total ? Math.max(4, Math.round((value / total) * 100)) : 0;
+        return `<div class="bar-row">
+          <div><strong>${label}</strong><span>${value}</span></div>
+          <div class="bar-track"><i class="${tone}" style="width:${width}%"></i></div>
+        </div>`;
+      })
+      .join("") || `<div class="details muted">No request data yet.</div>`;
+}
+
+function tenancyDisplayName(tenancyOcid) {
+  const tenancy = catalog.tenancies.find((item) => item.tenancy_ocid === tenancyOcid);
+  return tenancy?.display_name || tenancyOcid;
+}
+
+function renderFocusChart() {
+  const source = session.is_admin
+    ? state.requests.flatMap((request) => request.target_tenancy_ocids || [request.target_tenancy_ocid])
+    : state.requests.map((request) => request.status);
+  const counts = source.reduce((items, key) => {
+    if (!key) return items;
+    items[key] = (items[key] || 0) + 1;
+    return items;
+  }, {});
+  const rows = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+  $("focusChartEyebrow").textContent = session.is_admin ? "Tenancy Spread" : "My Request Pattern";
+  $("focusChartTitle").textContent = session.is_admin ? "Top Tenancies" : "Status Focus";
+  $("focusChart").innerHTML =
+    rows
+      .map(([label, value], index) => {
+        const width = Math.max(8, Math.round((value / Math.max(...rows.map((row) => row[1]))) * 100));
+        const displayLabel = session.is_admin ? tenancyDisplayName(label) : label;
+        return `<div class="rank-row">
+          <span>${index + 1}</span>
+          <strong title="${label}">${displayLabel}</strong>
+          <div class="rank-track"><i style="width:${width}%"></i></div>
+          <em>${value}</em>
+        </div>`;
+      })
+      .join("") || `<div class="details muted">No activity to chart yet.</div>`;
 }
 
 function selectedRequest() {
@@ -329,8 +448,20 @@ document.addEventListener("click", async (event) => {
 });
 
 function openTab(tabId) {
+  if (!session.is_authenticated) return;
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === tabId));
   document.querySelectorAll(".page").forEach((page) => page.classList.toggle("active", page.id === tabId));
+}
+
+async function loadAuthenticatedApp() {
+  if (!session.is_authenticated) {
+    renderSession();
+    setStatus("Sign in to open the JIT access portal.");
+    return;
+  }
+  await loadCatalog();
+  await loadRequests();
+  renderDashboard();
 }
 
 $("targetTenancy").addEventListener("change", renderGroups);
@@ -456,7 +587,8 @@ $("loginForm").addEventListener("submit", async (event) => {
     session = result.session || session;
     $("loginPassword").value = "";
     renderSession();
-    await loadRequests();
+    openTab("dashboardPage");
+    await loadAuthenticatedApp();
     setStatus(`Signed in as ${session.email}.`);
   });
 });
@@ -493,7 +625,8 @@ $("registerForm").addEventListener("submit", async (event) => {
     authPanel = "login";
     $("registerPassword").value = "";
     renderSession();
-    await loadRequests();
+    openTab("dashboardPage");
+    await loadAuthenticatedApp();
     setStatus(`Account created and signed in as ${session.email}.`);
   });
 });
@@ -509,7 +642,8 @@ $("verifyForm").addEventListener("submit", async (event) => {
     $("verifyToken").value = "";
     authPanel = "login";
     renderSession();
-    await loadRequests();
+    openTab("dashboardPage");
+    await loadAuthenticatedApp();
     setStatus(`Account verified and signed in as ${session.email}.`);
   });
 });
@@ -519,7 +653,8 @@ $("logoutButton").addEventListener("click", async () => {
     selectedRequestId = null;
     state = { requests: [], events: [] };
     await loadSession();
-    await loadRequests();
+    authPanel = "login";
+    renderSession();
     setStatus("Signed out. Sign in to create or monitor access requests.");
   });
 });
@@ -533,6 +668,8 @@ if (query.get("verify_email") || query.get("verification_token")) {
   $("verifyToken").value = query.get("verification_token") || "";
 }
 
-loadSession().then(loadCatalog).then(loadRequests).catch((error) => {
-  document.body.innerHTML = `<main class="shell"><section class="panel"><h1>App failed to load</h1><p>${error.message}</p></section></main>`;
+loadSession().then(loadAuthenticatedApp).catch((error) => {
+  session = { email: "anonymous", role: "requester", is_authenticated: false, is_admin: false };
+  renderSession();
+  setStatus(`Portal API is not reachable yet: ${error.message}`);
 });

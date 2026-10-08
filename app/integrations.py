@@ -1,5 +1,7 @@
 import hashlib
+import smtplib
 import time
+from email.message import EmailMessage
 
 from .config import app_config
 
@@ -279,6 +281,90 @@ class MockNotificationGateway:
         }
 
 
+class SmtpNotificationGateway:
+    def __init__(self):
+        self.config = app_config()
+        if not self.config["smtp_host"]:
+            raise RuntimeError("JIT_SMTP_HOST is required when JIT_NOTIFICATION_MODE=smtp")
+        if not self.config["smtp_sender"]:
+            raise RuntimeError("JIT_SMTP_SENDER is required when JIT_NOTIFICATION_MODE=smtp")
+
+    def _send_email(self, recipients, subject, body):
+        if isinstance(recipients, str):
+            recipients = [recipients]
+        message = EmailMessage()
+        message["From"] = self.config["smtp_sender"]
+        message["To"] = ", ".join(recipients)
+        message["Subject"] = subject
+        message.set_content(body)
+        with smtplib.SMTP(self.config["smtp_host"], self.config["smtp_port"], timeout=self.config["smtp_timeout_seconds"]) as smtp:
+            if self.config["smtp_starttls"]:
+                smtp.starttls()
+            if self.config["smtp_username"] and self.config["smtp_password"]:
+                smtp.login(self.config["smtp_username"], self.config["smtp_password"])
+            smtp.send_message(message)
+        return {
+            "message_id": stable_ocid("notification", subject, *recipients, int(time.time())),
+            "channel": "smtp",
+            "recipients": recipients,
+            "subject": subject,
+        }
+
+    def send_account_verification(self, email, display_name, verification_token, verification_url=None):
+        subject = "Verify your OCI JIT access portal account"
+        body = "\n".join(
+            [
+                f"Hello {display_name or email},",
+                "",
+                "Your OCI JIT access portal account was created and requires verification.",
+                "",
+                f"Verification token: {verification_token}",
+                f"Verification link: {verification_url}" if verification_url else "",
+                "",
+                "If you did not request this account, contact your IAM administrator.",
+            ]
+        ).strip()
+        result = self._send_email(email, subject, body)
+        return {**result, "recipient": email, "verification_url_created": bool(verification_url)}
+
+    def send_access_expiry_warning(self, request, minutes_left):
+        subject = f"OCI JIT access expires in {minutes_left} minute(s)"
+        token = request.get("extension_token")
+        body = "\n".join(
+            [
+                f"Hello {request['requester_email']},",
+                "",
+                f"Your OCI JIT access for request #{request['request_id']} expires in {minutes_left} minute(s).",
+                f"Group: {request.get('requested_group_name') or request.get('group_ocid') or '-'}",
+                f"Expires at: {request.get('expires_at') or '-'}",
+                "",
+                f"Extension token: {token}" if token else "No extension token is available for this request.",
+                "",
+                "Open the JIT access portal to request an extension if required.",
+            ]
+        ).strip()
+        result = self._send_email(request["requester_email"], subject, body)
+        return {**result, "recipient": request["requester_email"], "secure_extension_link_created": bool(token)}
+
+    def send_revocation_failure_admin_notice(self, request, errors, recipients):
+        subject = f"OCI JIT revocation failed for request #{request['request_id']}"
+        error_lines = "\n".join(f"- {item.get('tenancy_ocid')}: {item.get('error')}" for item in errors)
+        body = "\n".join(
+            [
+                "OCI JIT access revocation failed and needs administrator review.",
+                "",
+                f"Request: #{request['request_id']}",
+                f"Requester: {request['requester_email']}",
+                f"Group: {request.get('requested_group_name') or request.get('group_ocid') or '-'}",
+                "",
+                "Errors:",
+                error_lines or "- No error details available",
+            ]
+        )
+        result = self._send_email(recipients, subject, body)
+        return {**result, "error_count": len(errors)}
+
+
 def oci_gateway():
     if app_config()["mode"] == "oci":
         return OciSdkGateway()
@@ -290,7 +376,8 @@ def jira_gateway():
 
 
 def notification_gateway():
-    # Replace with OCI Email Delivery or OCI Notifications publisher in production.
+    if app_config()["notification_mode"] == "smtp":
+        return SmtpNotificationGateway()
     return MockNotificationGateway()
 
 
