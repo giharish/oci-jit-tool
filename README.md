@@ -154,6 +154,8 @@ Local runs use SQLite by default. Production is configured for OCI PostgreSQL wi
 
 Use [DEPLOYMENT_RUNBOOK.md](/Users/girishraja/Documents/ChatGPT/Optimization/jit-production-app/DEPLOYMENT_RUNBOOK.md) for the step-by-step customer deployment plan.
 
+Before customer deployment, review [SECURITY.md](/Users/girishraja/Documents/ChatGPT/Optimization/jit-production-app/SECURITY.md), run the unit tests, scan Python dependencies, and scan every OCI Function image that will be deployed to OCIR.
+
 Function deployment helpers:
 
 - [deployment/prepare_function_contexts.sh](/Users/girishraja/Documents/ChatGPT/Optimization/jit-production-app/deployment/prepare_function_contexts.sh) copies shared app code, dependencies, and optional PostgreSQL CA certificate into each function build context.

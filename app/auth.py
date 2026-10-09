@@ -103,13 +103,16 @@ def _bearer_token(headers):
 
 def authenticated_actor(ctx=None, default="anonymous"):
     headers = _context_headers(ctx)
-    token_actor = verify_session_token(_bearer_token(headers))
-    if token_actor:
-        return token_actor
-    for key in AUTH_HEADER_KEYS:
-        value = _header_value(headers.get(key))
-        if value:
-            return value
+    auth_mode = app_config()["portal_auth_mode"]
+    if auth_mode in ("builtin", "hybrid", "mixed"):
+        token_actor = verify_session_token(_bearer_token(headers))
+        if token_actor:
+            return token_actor
+    if auth_mode in ("trusted_header", "idp", "hybrid", "mixed"):
+        for key in AUTH_HEADER_KEYS:
+            value = _header_value(headers.get(key))
+            if value:
+                return value
     return default
 
 

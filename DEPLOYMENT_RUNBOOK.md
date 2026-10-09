@@ -23,6 +23,8 @@ Capture these customer values before deployment:
 - Notification channel: OCI Email Delivery or OCI Notifications email topic.
 - List of configured admin users or admin group claims from customer SSO. These are the only identities allowed to approve, reject, revoke, view all requests, sync catalog, or run worker actions from the portal.
 
+Review [SECURITY.md](SECURITY.md) before deployment. It defines the branch, identity-header, secret-handling, dependency-scan, and image-scan controls expected for customer handover.
+
 ## 2. Prepare OCI Prerequisites
 
 1. Create a control-plane compartment, for example `jit-access-platform`.

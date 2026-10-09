@@ -112,6 +112,7 @@ def app_config():
         "service_allowlist": env_json("JIT_SERVICE_ALLOWLIST", SERVICE_ALLOWLIST),
         "mock_child_tenancy_count": int(os.environ.get("JIT_MOCK_CHILD_TENANCY_COUNT", "25")),
         "parent_tenancy_ocid": os.environ.get("JIT_PARENT_TENANCY_OCID") or None,
+        "debug_errors": os.environ.get("JIT_DEBUG_ERRORS", "false").lower() == "true",
     }
 
 

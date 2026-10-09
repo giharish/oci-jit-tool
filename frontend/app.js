@@ -8,6 +8,16 @@ let session = { email: "anonymous", role: "requester", is_authenticated: false, 
 let selectedRequestId = null;
 let authPanel = "login";
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]
+  ));
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
 async function api(path, options = {}) {
   const url = path.startsWith("/api") ? `${API_BASE}${path.slice(4)}` : path;
   const headers = { "content-type": "application/json", ...(options.headers || {}) };
@@ -141,13 +151,13 @@ function renderCatalog() {
   $("targetTenancy").innerHTML = catalog.tenancies
     .map(
       (tenancy, index) => `<label class="check-row">
-        <input type="checkbox" name="targetTenancy" value="${tenancy.tenancy_ocid}" ${index === 0 ? "checked" : ""} />
-        <span><strong>${tenancy.display_name}${tenancy.is_parent ? " (parent)" : ""}</strong><small>${tenancy.tenancy_ocid}</small></span>
+        <input type="checkbox" name="targetTenancy" value="${escapeAttr(tenancy.tenancy_ocid)}" ${index === 0 ? "checked" : ""} />
+        <span><strong>${escapeHtml(tenancy.display_name)}${tenancy.is_parent ? " (parent)" : ""}</strong><small>${escapeHtml(tenancy.tenancy_ocid)}</small></span>
       </label>`,
     )
     .join("");
   $("serviceFamily").innerHTML = Object.keys(catalog.service_allowlist)
-    .map((name) => `<option value="${name}">${name}</option>`)
+    .map((name) => `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`)
     .join("");
   $("tenancyMetric").textContent = catalog.tenancies.length;
   $("groupMetric").textContent = catalog.groups.length;
@@ -155,8 +165,8 @@ function renderCatalog() {
     .map((tenancy) => {
       const groups = catalog.groups.filter((group) => group.tenancy_ocid === tenancy.tenancy_ocid);
       return `<article class="catalog-card">
-        <strong>${tenancy.display_name}</strong>
-        <small>${tenancy.tenancy_ocid}</small>
+        <strong>${escapeHtml(tenancy.display_name)}</strong>
+        <small>${escapeHtml(tenancy.tenancy_ocid)}</small>
         <small>${groups.length} selectable JIT group(s)</small>
       </article>`;
     })
@@ -174,7 +184,7 @@ function renderGroups() {
     .filter((name, index, names) => names.indexOf(name) === index)
     .map((name) => {
       const group = uniqueGroups.find((item) => item.group_name === name);
-      return `<option value="${name}">${name} - ${group?.policy_summary || "Terraform-managed policy"}</option>`;
+      return `<option value="${escapeAttr(name)}">${escapeHtml(name)} - ${escapeHtml(group?.policy_summary || "Terraform-managed policy")}</option>`;
     })
     .join("");
 }
@@ -186,9 +196,9 @@ function renderRequests() {
     : `Showing ${state.requests.length} request(s) for ${visibleEmail || "the requester email entered on the request form"}.`;
   $("requestList").innerHTML = state.requests
     .map((request) => `<button class="request-card ${request.request_id === selectedRequestId ? "active" : ""}" data-request-id="${request.request_id}">
-      <strong>#${request.request_id} ${request.access_type.replace("_", " ")}</strong>
-      <small class="request-meta"><span>${request.requester_email}</span><span>${request.status}</span></small>
-      <small class="request-tenancy">${(request.target_tenancy_ocids || [request.target_tenancy_ocid]).join(", ")}</small>
+      <strong>#${escapeHtml(request.request_id)} ${escapeHtml(String(request.access_type || "").replace("_", " "))}</strong>
+      <small class="request-meta"><span>${escapeHtml(request.requester_email)}</span><span>${escapeHtml(request.status)}</span></small>
+      <small class="request-tenancy">${escapeHtml((request.target_tenancy_ocids || [request.target_tenancy_ocid]).join(", "))}</small>
     </button>`)
     .join("") || `<div class="details muted">No requests yet.</div>`;
   renderSelectedRequest();
@@ -207,10 +217,10 @@ function expiringSoonCount() {
 }
 
 function renderStat(label, value, tone, detail = "") {
-  return `<article class="stat-widget ${tone}">
-    <span>${label}</span>
-    <strong>${value}</strong>
-    <small>${detail}</small>
+  return `<article class="stat-widget ${escapeAttr(tone)}">
+    <span>${escapeHtml(label)}</span>
+    <strong>${escapeHtml(value)}</strong>
+    <small>${escapeHtml(detail)}</small>
   </article>`;
 }
 
@@ -263,8 +273,8 @@ function renderStatusChart(counts, total) {
         const value = counts[key] || 0;
         const width = total ? Math.max(4, Math.round((value / total) * 100)) : 0;
         return `<div class="bar-row">
-          <div><strong>${label}</strong><span>${value}</span></div>
-          <div class="bar-track"><i class="${tone}" style="width:${width}%"></i></div>
+          <div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>
+          <div class="bar-track"><i class="${escapeAttr(tone)}" style="width:${width}%"></i></div>
         </div>`;
       })
       .join("") || `<div class="details muted">No request data yet.</div>`;
@@ -296,9 +306,9 @@ function renderFocusChart() {
         const displayLabel = session.is_admin ? tenancyDisplayName(label) : label;
         return `<div class="rank-row">
           <span>${index + 1}</span>
-          <strong title="${label}">${displayLabel}</strong>
+          <strong title="${escapeAttr(label)}">${escapeHtml(displayLabel)}</strong>
           <div class="rank-track"><i style="width:${width}%"></i></div>
-          <em>${value}</em>
+          <em>${escapeHtml(value)}</em>
         </div>`;
       })
       .join("") || `<div class="details muted">No activity to chart yet.</div>`;
@@ -315,7 +325,7 @@ function membershipSummary(request) {
     .map((membership) => {
       const user = membership.user_id || "user pending";
       const group = membership.group_ocid || "group pending";
-      return `${membership.tenancy_ocid}: ${user} -> ${group}`;
+      return `${escapeHtml(membership.tenancy_ocid)}: ${escapeHtml(user)} -&gt; ${escapeHtml(group)}`;
     })
     .join("; ");
 }
@@ -337,19 +347,19 @@ function renderSelectedRequest() {
   $("selectedTitle").textContent = `Request #${request.request_id}`;
   $("selectedStatus").textContent = request.status;
   $("selectedDetails").innerHTML = `
-    <strong>${request.requester_name}</strong>
-    <span>${request.requester_email}</span>
-    <span><b>Type:</b> ${request.access_type}</span>
-    <span><b>Group:</b> ${request.requested_group_name || request.group_ocid || "-"}</span>
-    <span><b>Service:</b> ${request.service_family || "-"}</span>
-    <span><b>Verb:</b> ${request.verb || "-"}</span>
-    <span><b>Jira:</b> ${request.jira_issue_key || "-"}</span>
-    <span><b>Requested start:</b> ${request.requested_start_at || request.created_at || "-"}</span>
-    <span><b>Expires:</b> ${request.expires_at || "-"}</span>
+    <strong>${escapeHtml(request.requester_name)}</strong>
+    <span>${escapeHtml(request.requester_email)}</span>
+    <span><b>Type:</b> ${escapeHtml(request.access_type)}</span>
+    <span><b>Group:</b> ${escapeHtml(request.requested_group_name || request.group_ocid || "-")}</span>
+    <span><b>Service:</b> ${escapeHtml(request.service_family || "-")}</span>
+    <span><b>Verb:</b> ${escapeHtml(request.verb || "-")}</span>
+    <span><b>Jira:</b> ${escapeHtml(request.jira_issue_key || "-")}</span>
+    <span><b>Requested start:</b> ${escapeHtml(request.requested_start_at || request.created_at || "-")}</span>
+    <span><b>Expires:</b> ${escapeHtml(request.expires_at || "-")}</span>
     <span><b>Tenancies:</b> ${(request.target_tenancy_ocids || [request.target_tenancy_ocid]).length}</span>
     <span><b>Provisioned memberships:</b> ${membershipSummary(request)}</span>
-    <span><b>Extensions used:</b> ${request.extension_count || 0}/${catalog.access_policy.max_extensions || 2}</span>
-    <span><b>Extension status:</b> ${request.extension_status || "-"}</span>`;
+    <span><b>Extensions used:</b> ${escapeHtml(request.extension_count || 0)}/${escapeHtml(catalog.access_policy.max_extensions || 2)}</span>
+    <span><b>Extension status:</b> ${escapeHtml(request.extension_status || "-")}</span>`;
   const isAuthority = session.is_admin;
   const isRequester = session.email === request.requester_email || (!session.is_authenticated && $("requesterEmail").value.trim() === request.requester_email);
   $("approveButton").disabled = !isAuthority || request.status !== "requested";
@@ -380,8 +390,8 @@ function updateTimer() {
 function renderAudit() {
   $("auditLog").innerHTML = state.events
     .map((event) => `<li>
-      <time>${event.created_at} · ${event.action} · ${event.result}</time>
-      <span>${event.actor || "system"} ${event.target_tenancy_ocid || ""}</span>
+      <time>${escapeHtml(event.created_at)} · ${escapeHtml(event.action)} · ${escapeHtml(event.result)}</time>
+      <span>${escapeHtml(event.actor || "system")} ${escapeHtml(event.target_tenancy_ocid || "")}</span>
     </li>`)
     .join("") || `<li><span>No audit events yet.</span></li>`;
 }

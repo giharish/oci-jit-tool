@@ -24,6 +24,7 @@ from app.handlers import (
 )
 from app.integrations import OciSdkGateway
 from app.integrations import SmtpNotificationGateway
+from app.function_runtime import error_response
 from app.store import connect, parse_iso
 from app.store import postgres_dsn
 
@@ -382,6 +383,34 @@ class JitLifecycleTest(unittest.TestCase):
                 return {"Authorization": f"Bearer {result['token']}"}
 
         self.assertEqual(authenticated_actor(Context()), "iam.admin@customer.example")
+
+    def test_builtin_mode_ignores_spoofed_identity_headers(self):
+        os.environ["JIT_PORTAL_AUTH_MODE"] = "builtin"
+        self.addCleanup(os.environ.pop, "JIT_PORTAL_AUTH_MODE", None)
+
+        class Context:
+            def Headers(self):
+                return {"X-Authenticated-User": "iam.admin@customer.example"}
+
+        self.assertEqual(authenticated_actor(Context()), "anonymous")
+
+    def test_function_error_response_hides_internal_details(self):
+        result = error_response(None, RuntimeError("database password leaked"))
+        body = json.loads(result["body"])
+
+        self.assertEqual(result["statusCode"], 500)
+        self.assertEqual(body["error_type"], "InternalServerError")
+        self.assertEqual(body["error"], "Internal server error")
+        self.assertEqual(result["headers"]["Cache-Control"], "no-store")
+        self.assertEqual(result["headers"]["X-Content-Type-Options"], "nosniff")
+
+    def test_function_error_response_keeps_validation_message(self):
+        result = error_response(None, ValueError("Missing required field: requester_email"))
+        body = json.loads(result["body"])
+
+        self.assertEqual(result["statusCode"], 400)
+        self.assertEqual(body["error_type"], "ValidationError")
+        self.assertEqual(body["error"], "Missing required field: requester_email")
 
     def test_self_service_registration_requires_allowed_domain_and_email_verification(self):
         os.environ["JIT_PORTAL_AUTH_MODE"] = "builtin"

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from urllib.parse import parse_qs
 
 from app.auth import login_builtin_user, register_builtin_user, verify_builtin_user_email, verify_session_token
+from app.config import app_config
 from app.handlers import (
     approval_callback,
     approve_extension,
@@ -27,19 +28,30 @@ APP_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = APP_DIR / "frontend"
 PORT = int(os.environ.get("PORT", "8090"))
 
+SECURITY_HEADERS = {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:* https:; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
+
 
 def authenticated_actor(headers):
-    authorization = headers.get("Authorization")
-    if authorization and authorization.lower().startswith("bearer "):
-        actor = verify_session_token(authorization.split(" ", 1)[1].strip())
-        if actor:
-            return actor
-    return (
-        headers.get("X-Authenticated-User")
-        or headers.get("X-Forwarded-Email")
-        or os.environ.get("JIT_LOCAL_AUTH_EMAIL")
-        or "anonymous"
-    )
+    auth_mode = app_config()["portal_auth_mode"]
+    if auth_mode in ("builtin", "hybrid", "mixed"):
+        authorization = headers.get("Authorization")
+        if authorization and authorization.lower().startswith("bearer "):
+            actor = verify_session_token(authorization.split(" ", 1)[1].strip())
+            if actor:
+                return actor
+    if auth_mode in ("trusted_header", "idp", "hybrid", "mixed"):
+        return (
+            headers.get("X-Authenticated-User")
+            or headers.get("X-Forwarded-Email")
+            or os.environ.get("JIT_LOCAL_AUTH_EMAIL")
+            or "anonymous"
+        )
+    return "anonymous"
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -63,8 +75,16 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def end_headers(self):
+        for key, value in SECURITY_HEADERS.items():
+            self.send_header(key, value)
+        super().end_headers()
+
     def handle_error(self, exc):
         status = 404 if isinstance(exc, KeyError) else 400 if isinstance(exc, ValueError) else 500
+        if status == 500 and not app_config()["debug_errors"]:
+            self.send_json({"error": "Internal server error"}, status)
+            return
         self.send_json({"error": str(exc)}, status)
 
     def do_GET(self):
