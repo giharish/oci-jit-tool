@@ -106,11 +106,13 @@ def connect():
         raw_conn = psycopg.connect(postgres_dsn(config), row_factory=dict_row)
         raw_conn.execute(sql.SQL("set search_path to {}, public").format(sql.Identifier(config["postgres_schema"])))
         conn = PostgresConnection(raw_conn)
-    else:
+    elif config["db_backend"] == "sqlite":
         db_path = Path(config["db_path"])
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
+    else:
+        raise RuntimeError(f"Unsupported JIT_DB_BACKEND: {config['db_backend']}. Supported backends are sqlite and postgresql.")
     try:
         yield conn
         conn.commit()

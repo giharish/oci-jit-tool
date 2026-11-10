@@ -329,8 +329,8 @@ def verify_builtin_user_email(email, token):
         if _row_value(row, "status") == "disabled":
             raise ValueError("User account is disabled")
         expected = _row_value(row, "verification_token")
-        if _row_value(row, "status") == "active" and not expected:
-            return {"token": issue_session_token(email), "session": _session_for_email(email)}
+        if _row_value(row, "status") == "active":
+            raise ValueError("Account is already verified; sign in instead")
         if not expected or not hmac.compare_digest(str(expected), token):
             raise ValueError("Invalid verification token")
         conn.execute(

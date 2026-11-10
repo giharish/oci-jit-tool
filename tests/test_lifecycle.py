@@ -294,6 +294,12 @@ class JitLifecycleTest(unittest.TestCase):
         self.assertIn("sslrootcert=", dsn)
         self.assertIn("sslmode=verify-full", dsn)
 
+    def test_unknown_database_backend_fails_closed(self):
+        with patch.dict(os.environ, {"JIT_DB_BACKEND": "oci_nosql"}):
+            with self.assertRaisesRegex(RuntimeError, "Unsupported JIT_DB_BACKEND"):
+                with connect():
+                    pass
+
     def test_postgres_dsn_strips_outer_smart_quotes(self):
         dsn = postgres_dsn(
             {
@@ -438,6 +444,9 @@ class JitLifecycleTest(unittest.TestCase):
         self.assertEqual(verified["session"]["email"], "new.user@example.com")
         self.assertEqual(verified["session"]["role"], "requester")
         self.assertEqual(verify_session_token(verified["token"]), "new.user@example.com")
+
+        with self.assertRaises(ValueError):
+            verify_builtin_user_email("new.user@example.com", "arbitrary-token")
 
     def test_smtp_notification_gateway_sends_verification_email(self):
         sent_messages = []

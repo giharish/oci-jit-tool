@@ -9,6 +9,8 @@ This runbook deploys the OCI IAM JIT Access application as a production-style se
 - Jira approval integration.
 - Expiry warning notification and extension workflow.
 
+**Deployment status:** This repository is a PoC scaffold and requires a customer security and operational review before production use. Jira issue creation and Jira-driven approval are not implemented: `jira_gateway()` always returns `MockJiraGateway`, even when `JIT_JIRA_MODE=jira`. The existing portal admin approval path can be evaluated without Jira. Section 10 describes the additional development and deployment work needed for a real Jira integration; configuring Jira alone will not enable it.
+
 ## 1. Confirm Scope
 
 Capture these customer values before deployment:
@@ -870,16 +872,63 @@ The notification worker sends email when remaining time is less than 15 minutes.
 
 ## 10. Configure Jira Approval
 
-1. Create a Jira project or use an approved existing project.
-2. Create approval workflow statuses.
-3. Configure webhook callback to API Gateway route `/approval`.
-4. Sign webhook payloads or use a shared secret.
-5. Update `MockJiraGateway` with Jira REST issue creation and callback verification.
+### 10.1 Scope and current limitations
 
-For extensions, either:
+The following procedure targets **Jira Cloud**. For Jira Data Center, confirm the customer's supported REST API, authentication, event delivery and security requirements separately; do not assume Cloud endpoints or webhook signatures apply.
 
-- Create a new Jira approval item for each extension request, or
-- Route extension approvals to the in-portal configured-admin queue.
+There is currently no real Jira connector, Jira API token configuration, webhook signature verification, or Jira approval mapping in this repository. `JIT_JIRA_MODE=jira` in the example configuration does not enable those features. Request submission creates a simulated `JIT-<request_id>` key. The existing `/api/approval` route expects an authenticated portal administrator; it is not a Jira webhook receiver. Do not point a public Jira webhook at that route or treat the mock issue key as Jira evidence.
+
+Until the integration below is implemented and tested, use the portal approval workflow with configured administrators. Do not claim Jira approval is enforcing access.
+
+### 10.2 Gather Jira and OCI details
+
+Record the Jira Cloud site URL, project key and issue type, required fields, approval workflow and approved Jira approver group. Decide whether access extensions use separate Jira issues or remain in the portal's admin queue. Identify the Jira administrator, integration owner and OCI operator.
+
+Identify the Functions application, API Gateway deployment and route prefix (normally `/api`), a secret store, monitoring destination, and an HTTPS endpoint reachable by Jira Cloud. Confirm outbound HTTPS connectivity and DNS from Functions to the Jira site and inbound connectivity to the dedicated webhook endpoint. Restrict the integration account to the required project and operations.
+
+For production choose the customer's approved Atlassian app authentication, such as OAuth 2.0, and a lifecycle for rotating credentials. Atlassian documents email and API-token basic authentication for simple scripts and manual testing; do not commit tokens or print them in logs. See [Atlassian authentication guidance](https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/).
+
+### 10.3 Prepare the Jira project
+
+1. A Jira administrator creates or selects the project and an issue type for access requests. Determine every mandatory field using the project's create-issue metadata. Agree on the desired fields, including a unique JIT request reference, requester, target tenancy IDs, group, start time, duration and justification. Avoid copying passwords, tokens or unnecessary personal data.
+2. Configure a workflow with distinguishable pending, approved and rejected outcomes. Restrict transitions to the authorized approval group and prevent requesters from approving their own requests. Define how a Jira approver maps to a configured JIT administrator using a stable Jira account identifier, not an unverified email from an event.
+3. Provision the integration identity or OAuth app with only the permissions needed to create and read relevant issues and retrieve approval evidence. Test those permissions in a non-production project. Confirm organizational rules for Jira data residency and retention.
+4. Define how issue updates, approval reversals, duplicate events and deleted issues are handled. A status change alone is not proof of an authorized approval unless the workflow and integration verify the actual approver.
+
+### 10.4 Implement the connector before configuring Functions
+
+The following are development requirements, not environment variables already supported by this release:
+
+1. Implement a Jira Cloud gateway in `app/integrations.py` and change `jira_gateway()` to select it explicitly. Unknown or incomplete Jira configurations must fail closed; mock mode must never silently stand in for a real connector.
+2. Add validated configuration for the Jira site URL, project, issue type, authentication and secret references. Retrieve secrets using the customer's approved mechanism; do not place credentials in source control or Function images. Document the actual variable names only after the implementation exists.
+3. Create the issue using the Jira REST API, including mandatory project fields, and persist the returned issue ID/key against the JIT request. Use the project create metadata to account for custom required fields. See [Jira Cloud create issue](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/).
+4. Design reliable handling of partial failures between PostgreSQL and Jira. Retrying after a timeout must not create duplicate Jira issues; use a durable unique request reference, reconciliation, and an explicit failed or pending state. Do not grant access when issue creation or approval verification fails.
+5. Implement a dedicated webhook handler and route, for example `POST /api/jira/webhook`, or an authenticated reconciliation worker. Never reuse the current portal approval endpoint as an unauthenticated webhook. Match the configured API Gateway path prefix and Function backend exactly.
+6. Verify the webhook using the mechanism supported by the chosen Jira Cloud registration and app type. For a webhook configured with a secret, verify the documented signature against the original raw request bytes before parsing; use constant-time comparison and reject missing or invalid signatures. OAuth app webhooks use a different documented authentication mechanism. See [Atlassian webhooks](https://developer.atlassian.com/cloud/jira/platform/webhooks/).
+7. After verification, correlate the event to the stored Jira issue ID and JIT request. Verify the decision, actual authorized approver and separation of duties against Jira and the configured JIT administrators. Reject unrelated, stale, replayed or duplicate events; make processing idempotent and enforce request state transitions atomically. Keep an audit record without secrets.
+8. Integrate approvals with scheduled start, expiry and revocation. Specify how Jira and portal approvals interact and ensure neither permits an unauthorized user or the requester to approve. Implement and test the chosen extension workflow separately.
+9. Add automated tests covering authorized and unauthorized approvals, invalid signatures, self-approval, replay, duplicates, out-of-order events, Jira outage, retry and reconciliation, future starts, revocation and extensions. Obtain a security review before using the integration for real access.
+
+### 10.5 Deploy and configure the implemented integration
+
+Only after Section 10.4 is implemented, reviewed and merged into the release branch:
+
+1. Configure the actual integration settings and secret references documented by that implementation. Use OCI Vault or the customer's approved secret platform; provide least-privilege runtime access and a rotation procedure. Confirm the chosen secret injection or retrieval method actually exists in the implementation.
+2. Apply any new database migrations using the database administrator role; grant the Function runtime only the privileges it needs. Back up and verify the schema using Section 3.
+3. Rebuild and deploy every affected Function using Section 6, scan the exact image digests, and deploy the corresponding API Gateway route. Do not expose the webhook until signature verification is active. Protect portal routes and the webhook with their respective authentication mechanisms; keep direct Function invocation restricted.
+4. In Jira, register the webhook for the relevant project and issue update events using the method supported by the selected app or administrator integration. Supply the dedicated HTTPS URL and configure the supported authentication or signing secret. Atlassian's registration and verification methods differ by webhook type; follow its current [webhook documentation](https://developer.atlassian.com/cloud/jira/platform/webhooks/).
+5. Configure logs, alerting, delivery-failure monitoring and reconciliation. Record the owner, retry procedure, incident contacts and credential rotation dates. Do not log webhook secrets, authorization headers or access tokens.
+
+### 10.6 End-to-end acceptance test
+
+Perform these tests in an isolated test project and tenancy before customer rollout:
+
+1. Submit a request and verify one real Jira issue is created, with its Jira issue ID/key linked to the correct JIT request. Verify a retry cannot produce a second issue.
+2. Attempt a decision as the requester and as an unauthorized Jira user. Both must be rejected without adding OCI group membership.
+3. Approve as an authorized, separately identified approver. Verify the correct request and selected tenancies, the scheduled start time and duration, and the resulting group membership and audit records.
+4. Submit invalid-signature, duplicate and out-of-order events; verify they cannot grant or extend access. Confirm a Jira API or network outage fails closed and can be reconciled without duplicate grants.
+5. Test rejection, the selected extension workflow, expiry and automatic revocation. Simulate a revocation failure and confirm alerting and the documented recovery process.
+6. Record the Function image digests, API routes, Jira workflow version, test evidence, approver mapping and operational owner for the release.
 
 ## 11. Run Production Smoke Test
 
@@ -889,14 +938,14 @@ For extensions, either:
 4. Select a child tenancy and confirm groups load dynamically.
 5. Submit standard group request.
 6. Confirm an `access_request` row is created in PostgreSQL.
-7. Approve through Jira or portal.
+7. Approve through the portal. Test Jira approval only after the integration in Section 10 has been implemented and validated.
 8. Confirm user is attached only to the selected target-tenancy group.
 9. Confirm timer appears in portal.
 10. Force or wait until less than 15 minutes remain.
 11. Confirm warning email is sent to requester.
 12. Request an extension.
 13. Approve extension.
-14. Confirm timer resets to the approved extension duration.
+14. Confirm the approved extension is added to the existing expiry time.
 15. Repeat extension once more.
 16. Confirm a third extension request is rejected.
 17. Let timer expire or run expiry worker.
